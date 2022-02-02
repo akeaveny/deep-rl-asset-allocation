@@ -1,0 +1,18 @@
+# misc
+.DS_Store
+__pycache__/
+*.pyc
+
+# editors
+.vscode/
+.idea/
+
+# build
+build/
+dist/
+.eggs/
+*.egg-info/
+venv/
+
+# data
+# *.csv
