@@ -14,5 +14,5 @@ dist/
 *.egg-info/
 venv/
 
-# data
-# *.csv
+# repo
+deep_rl_asset_allocation/results/
