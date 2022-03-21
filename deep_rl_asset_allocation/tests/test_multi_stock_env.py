@@ -24,6 +24,9 @@ class TestMultiStockEnv(unittest.TestCase):
     def _step_openai_gym(self, env):
         """test for basic functionality of an Open AI gym env"""
 
+        action_space = env.action_space
+        obs_space = env.observation_space
+
         for idx in range(10):
 
             obs = env.reset()

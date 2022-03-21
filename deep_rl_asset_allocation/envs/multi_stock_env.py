@@ -1,5 +1,6 @@
 import os
 import pprint
+import time
 
 import gym
 import matplotlib
@@ -12,7 +13,7 @@ from gym import spaces
 from gym.utils import seeding
 
 # "Agg" backend is for writing to file, not for rendering in a window
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 
 
 class MultiStockEnv(gym.Env):
@@ -64,12 +65,16 @@ class MultiStockEnv(gym.Env):
             spaces.Box(low=0, high=np.inf, shape=(data_config.STOCK_DIM, ), dtype=np.float32),
             "shares_owned_fractional":
             spaces.Box(low=0, high=np.inf, shape=(data_config.STOCK_DIM, ), dtype=np.float32),
+            # MACD: one of the most commonly used momentum indicator that identifies moving averages
             "moving_average_convergence_divergence":
             spaces.Box(low=0, high=np.inf, shape=(data_config.STOCK_DIM, ), dtype=np.float32),
+            # RSI: quantifies the extent of recent price changes. If price moves around the support line, it indicates the stock is oversold, and we can perform the buy action (and vice-versa)
             "relative_strength_index ":
             spaces.Box(low=0, high=np.inf, shape=(data_config.STOCK_DIM, ), dtype=np.float32),
+            # CCI: compares current price to average price over a time window to indicate a buying or selling action
             "commodity_channel_index":
             spaces.Box(low=0, high=np.inf, shape=(data_config.STOCK_DIM, ), dtype=np.float32),
+            # ADX: identifies trend strength by quantifying the amount of price movement
             "average_directional_index":
             spaces.Box(low=0, high=np.inf, shape=(data_config.STOCK_DIM, ), dtype=np.float32)
         })
@@ -134,7 +139,7 @@ class MultiStockEnv(gym.Env):
         self.env_info["terminal"] = self.env_info["day"] >= self.env_info["max_days"]
 
         if self.env_info["terminal"]:
-            self._save_terminal_state()
+            info = self._save_terminal_state()
             return self.observation, self.env_info["reward"], self.env_info["terminal"], {}
 
         # calculate total assets at timestep t
@@ -234,7 +239,7 @@ class MultiStockEnv(gym.Env):
             print(f'Sharpe Ratio: {sharpe_ratio:.2f}')
         return sharpe_ratio
 
-    def _save_terminal_state(self):
+    def _save_terminal_state(self, _DELAY=10):
 
         # init filenames
         total_asset_value_memory_plot_filename = os.path.join(paths_config.results_figs_dir,
@@ -243,15 +248,26 @@ class MultiStockEnv(gym.Env):
                                                              f'total_asset_value_{self.env_info["split"]}_{self.env_info["training_iteration"]}.csv')
         account_rewards_csv_filename = os.path.join(paths_config.results_csv_dir, f'rewards_{self.env_info["split"]}_{self.env_info["training_iteration"]}.csv')
 
-        # TODO: print self.env_info
-
         # get params for logging
         account_balance = int(self.observation["account_balance"][0])
         total_assets = int(self._get_total_assets())
         sharpe_ratio = self._get_sharpe_ratio()
 
+        # save total asset value as csv
+        df_total_value = pd.DataFrame(self.memory_buffer["total_asset_value_memory"])
+        df_total_value.to_csv(f'{total_asset_value_memory_csv_filename}')
+
+        # save rewards as csv
+        df_rewards = pd.DataFrame(self.memory_buffer["rewards_memory"])
+        df_rewards.to_csv(f'{account_rewards_csv_filename}')
+
+        # get params from env info
+        # pprint.pprint(self.env_info)
+        reward = self.env_info["reward"]
+        trades = self.env_info["trades"]
+        costs = self.env_info["costs"]
+
         # plot total asset value
-        # init fig
         fig = plt.figure(figsize=(10, 10))
         plt.style.use("fivethirtyeight")
         title = f'{self.env_info["split"]} env \nAccount Balance: $ {account_balance} \nTotal Asset Value: $ {total_assets} \nSharpe Ratio: {sharpe_ratio:.2f}'
@@ -262,12 +278,18 @@ class MultiStockEnv(gym.Env):
         plt.plot(self.memory_buffer["total_asset_value_memory"])
         # save figure
         plt.savefig(f'{total_asset_value_memory_plot_filename}')
+
+        # print outputs to user if we are not training
+        if self.env_info["split"] == "val" or self.env_info["split"] == "test":
+            # TODO: print self.env_info
+            print(f"account_balance: ${account_balance:.2f}")
+            print(f"total_assets: ${total_assets:.2f}")
+            # print(f"rewards [change in total asset value]: average: ${float(df_rewards.avg()):.2f}")
+            print(
+                f"rewards [change in total asset value]: min: ${float(df_rewards.min()):.2f}, max: ${float(df_rewards.max()):.2f}, std: ${float(df_rewards.std()):.2f}"
+            )
+            # # show P&L
+            # plt.draw()
+            # plt.pause(_DELAY)
+            # time.sleep(_DELAY)
         plt.close()
-
-        # save total asset value as csv
-        df_total_value = pd.DataFrame(self.memory_buffer["total_asset_value_memory"])
-        df_total_value.to_csv(f'{total_asset_value_memory_csv_filename}')
-
-        # save rewards as csv
-        df_rewards = pd.DataFrame(self.memory_buffer["rewards_memory"])
-        df_rewards.to_csv(f'{account_rewards_csv_filename}')

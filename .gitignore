@@ -15,4 +15,5 @@ dist/
 venv/
 
 # repo
+*.pdf
 deep_rl_asset_allocation/results/

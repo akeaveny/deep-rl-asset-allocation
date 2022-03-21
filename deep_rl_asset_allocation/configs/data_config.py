@@ -12,7 +12,7 @@ TRAINING_END = datetime.date(2015, 9, 30)
 VALIDATION_START = datetime.date(2015, 10, 1)
 VALIDATION_END = datetime.date(2015, 12, 31)
 # testing is from: 2016 Jan 1st - 2020 May 8th
-TESTING_START = datetime.date(2016, 1, 1)
+TESTING_START = datetime.date(2016, 1, 4)
 TESTING_END = datetime.date(2020, 5, 8)
 
 NUMBER_OF_TRADING_DAYS_PER_YEAR = 252
