@@ -34,7 +34,7 @@ def train_A2C(env_train, model_name, timesteps=TIMESTEPS):
     model.learn(total_timesteps=timesteps)
     model.save(a2c_saved_model_filename)
     training_time = (time.time() - start) / 60
-    print(f'Training time (A2C): {training_time:.1f} minutes')
+    print(f'Training time (SB3-A2C): {training_time:.1f} minutes')
     return model
 
 
