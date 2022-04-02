@@ -23,8 +23,9 @@ scikit-learn==0.23.2
 matplotlib==3.4.1
 stable-baselines3==1.4.0
 gym==0.19.0
-# torch==1.10.1
+torch==1.10.1
 tensorboard==2.8.0
+Markdown==3.3.4
 pyportfolioopt==1.4.1
-pyfolio-reloaded==0.9.3  # pip install git+https://github.com/quantopian/pyfolio
+# pyfolio-reloaded==0.9.3  # pip install git+https://github.com/quantopian/pyfolio
 # zipline-reloaded==2.2.0  # conda install -c ml4t -c conda-forge -c ranaroussi zipline-reloaded

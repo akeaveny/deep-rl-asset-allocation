@@ -2,6 +2,8 @@
 
 import datetime
 
+SEED = 999
+
 # total number of stocks in our portfolio
 STOCK_DIM = 30
 

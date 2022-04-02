@@ -1,6 +1,5 @@
 import os
 import pprint
-import shutil
 import time
 from xml.dom import INDEX_SIZE_ERR
 
@@ -21,20 +20,67 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+SEED = 1234
+TIMESTEPS = 25000
+TENSORBOARD_LOG = paths_config.results_tensorboard_dir
 
-def train_A2C(env_train, model_name, timesteps=25000):
+
+def train_A2C(env_train, model_name, timesteps=TIMESTEPS):
     """A2C model with Stable-Baseline3"""
-    a2c_saved_model_filename = os.path.join(paths_config.results_trained_models_dir, f'{model_name}')
+    a2c_saved_model_filename = os.path.join(paths_config.results_trained_models_dir, f'{model_name}_{timesteps}')
+    # print(f"Saved Model to {a2c_saved_model_filename}")
 
     start = time.time()
-    model = A2C(MlpPolicy, env_train, verbose=0, seed=data_config.SEED, tensorboard_log=paths_config.results_tensorboard_dir)
+    model = A2C(MlpPolicy, env_train, verbose=0, seed=SEED, tensorboard_log=TENSORBOARD_LOG)
     model.learn(total_timesteps=timesteps)
     model.save(a2c_saved_model_filename)
-    print(f"Saved trained A2C model to: {a2c_saved_model_filename}")
     training_time = (time.time() - start) / 60
     print(f'Training time (SB3-A2C): {training_time:.1f} minutes')
 
     return model
+
+
+def validate_model(model, df_val, env_val) -> None:
+    obs = env_val.reset()
+    for idx in range(len(df_val.index.unique())):
+        action, state = model.predict(obs)
+        obs, rewards, done, info = env_val.step(action)
+
+
+def test_model(model, df_test, env_test, training_iteration):
+    obs = env_test.reset()
+    for idx in range(len(df_test.index.unique())):
+        action, state = model.predict(obs)
+        obs, rewards, done, info = env_test.step(action)
+        # if idx == (len(df_test.index.unique()) - 2):
+        if idx == (len(df_test.index.unique()) - 1):
+            last_obs = env_test.render()
+
+    # getting values from obs dict
+    account_balance = last_obs["account_balance"][0]
+    adjusted_close_price = last_obs["adjusted_close_price"]
+    shares_owned_fractional = last_obs["shares_owned_fractional"]
+    moving_average_convergence_divergence = last_obs["moving_average_convergence_divergence"]
+    relative_strength_index = last_obs["relative_strength_index"]
+    commodity_channel_index = last_obs["commodity_channel_index"]
+    average_directional_index = last_obs["average_directional_index"]
+    total_assets_value = np.array(account_balance) + np.sum(np.array(adjusted_close_price) * np.array(shares_owned_fractional))
+    print(f"Final Observation: \tAccount Balance: ${account_balance:.0f} \tTotal Asset Value: ${total_assets_value:.0f}")
+
+    df_last_state = pd.DataFrame({
+        'account_balance': int(account_balance),
+        'total_assets_value': int(total_assets_value),
+        'shares_owned_fractional': shares_owned_fractional,
+        'adjusted_close_price': adjusted_close_price,
+        'moving_average_convergence_divergence': moving_average_convergence_divergence,
+        'relative_strength_index': relative_strength_index,
+        'commodity_channel_index': commodity_channel_index,
+        'average_directional_index': average_directional_index
+    })
+
+    final_observation_csv_filename = os.path.join(paths_config.results_csv_dir, f'final_observation_test_{training_iteration}.csv')
+    df_last_state.to_csv(final_observation_csv_filename, index=False)
+    return last_obs
 
 
 def main():
@@ -79,6 +125,8 @@ def main():
         print(f'Testing:\t Start Date: {val_end_date}\t\tEnd Date: {test_end_date}')
 
         _df_train = data_loader_utils.get_data_between_dates(df_djia, start=data_config.TRAINING_START, end=val_start_date)
+        _df_val = data_loader_utils.get_data_between_dates(df_djia, start=val_start_date, end=val_end_date)
+        _df_test = data_loader_utils.get_data_between_dates(df_djia, start=val_end_date, end=test_end_date)
 
         # get mean of historical turbulence
         end_index = df_djia.index[df_djia["date"] == val_start_date].to_list()[-1]
@@ -101,9 +149,22 @@ def main():
         # TODO: init envs with DummyVecEnv([lambda: ])
         env_train = FlattenObservation(
             gym.make(env_config.GYM_ID, df=_df_train, split="train", training_iteration=training_iteration, turbulence_threshold=turbulence_threshold))
+        env_val = FlattenObservation(
+            gym.make(env_config.GYM_ID, df=_df_val, split="val", training_iteration=training_iteration, turbulence_threshold=turbulence_threshold))
+        env_test = FlattenObservation(
+            gym.make(env_config.GYM_ID,
+                     df=_df_test,
+                     split="test",
+                     previous_observation=previous_observation,
+                     training_iteration=training_iteration,
+                     turbulence_threshold=turbulence_threshold))
 
         print(f"Training A2C ...")
-        model_a2c = train_A2C(env_train, model_name=f"sb3_a2c_training_iteration_{training_iteration+1}")
+        model_a2c = train_A2C(env_train, model_name=f"a2c_djia_training_iteration_{training_iteration}_timesteps", timesteps=TIMESTEPS)
+        print(f"Validating A2C ...")
+        validate_model(model=model_a2c, df_val=_df_val, env_val=env_val)
+        print(f"Testing A2C ...")
+        previous_observation = test_model(model=model_a2c, df_test=_df_test, env_test=env_test, training_iteration=training_iteration)
 
 
 if __name__ == '__main__':

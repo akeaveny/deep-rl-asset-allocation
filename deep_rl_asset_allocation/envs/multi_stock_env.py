@@ -3,17 +3,15 @@ import pprint
 import time
 
 import gym
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from deep_rl_asset_allocation.configs import (data_config, env_config,
-                                              paths_config)
+import seaborn as sns
+from deep_rl_asset_allocation.configs import (data_config, env_config, paths_config)
 from gym import spaces
 from gym.utils import seeding
 
-# "Agg" backend is for writing to file, not for rendering in a window
-# matplotlib.use('Agg')
+pd.set_option('display.float_format', lambda x: '%.2f' % x)
 
 
 class MultiStockEnv(gym.Env):
@@ -242,54 +240,94 @@ class MultiStockEnv(gym.Env):
     def _save_terminal_state(self, _DELAY=10):
 
         # init filenames
-        total_asset_value_memory_plot_filename = os.path.join(paths_config.results_figs_dir,
-                                                              f'total_asset_value_{self.env_info["split"]}_{self.env_info["training_iteration"]}.png')
-        total_asset_value_memory_csv_filename = os.path.join(paths_config.results_csv_dir,
-                                                             f'total_asset_value_{self.env_info["split"]}_{self.env_info["training_iteration"]}.csv')
-        account_rewards_csv_filename = os.path.join(paths_config.results_csv_dir, f'rewards_{self.env_info["split"]}_{self.env_info["training_iteration"]}.csv')
+        total_asset_value_memory_plot_filename = os.path.join(paths_config.results_figs_dir, f"{self.env_info['split']}",
+                                                              f'portfolio_value_{self.env_info["training_iteration"]}.png')
+
+        total_asset_value_memory_csv_filename = os.path.join(paths_config.results_csv_dir, f"{self.env_info['split']}",
+                                                             f'portfolio_value_{self.env_info["training_iteration"]}.csv')
+
+        account_rewards_csv_filename = os.path.join(paths_config.results_csv_dir, f"{self.env_info['split']}", f'rewards_{self.env_info["training_iteration"]}.csv')
 
         # get params for logging
         account_balance = int(self.observation["account_balance"][0])
         total_assets = int(self._get_total_assets())
         sharpe_ratio = self._get_sharpe_ratio()
 
+        # save rewards as csv
+        df_rewards = pd.DataFrame(self.memory_buffer["rewards_memory"])
+        df_rewards.to_csv(f'{account_rewards_csv_filename}')
+        describe_df_rewards = df_rewards.describe()
+
         # save total asset value as csv
         df_total_value = pd.DataFrame(self.memory_buffer["total_asset_value_memory"])
         df_total_value.to_csv(f'{total_asset_value_memory_csv_filename}')
 
-        # save rewards as csv
-        df_rewards = pd.DataFrame(self.memory_buffer["rewards_memory"])
-        df_rewards.to_csv(f'{account_rewards_csv_filename}')
+        # Plot Portfolio Value
+        plt.rc('axes', titlesize=18)  # fontsize of the axes title
+        plt.rc('axes', labelsize=14)  # fontsize of the x and y labels
+        plt.rc('xtick', labelsize=13)  # fontsize of the tick labels
+        plt.rc('ytick', labelsize=13)  # fontsize of the tick labels
+        plt.rc('legend', fontsize=13)  # legend fontsize
+        plt.rc('font', size=13)  # controls default text sizes
 
-        # get params from env info
-        # pprint.pprint(self.env_info)
-        reward = self.env_info["reward"]
-        trades = self.env_info["trades"]
-        costs = self.env_info["costs"]
+        fig, ax = plt.subplots(figsize=(20, 15), tight_layout=True)
+        colors = sns.color_palette('pastel')
 
-        # plot total asset value
-        fig = plt.figure(figsize=(10, 10))
-        plt.style.use("fivethirtyeight")
-        title = f'{self.env_info["split"]} env \nAccount Balance: $ {account_balance} \nTotal Asset Value: $ {total_assets} \nSharpe Ratio: {sharpe_ratio:.2f}'
-        fig.suptitle(title, fontsize=14)
-        plt.ylabel('Asset Memory [$]', fontsize=12)
-        plt.xlabel('Window [months]', fontsize=12)
-        # plot asset memory
-        plt.plot(self.memory_buffer["total_asset_value_memory"])
+        # plt.title(f'Env: {self.env_info["split"]}')
+        plt.ylabel('Portfolio Value [$]')
+        plt.xlabel('Window [months]')
+
+        if self.env_info['split'] == "train":
+            color = colors[0]
+            plt.ylim([0 * env_config.INITIAL_ACCOUNT_BALANCE, 7.5 * env_config.INITIAL_ACCOUNT_BALANCE])
+        elif self.env_info['split'] == "val":
+            color = colors[1]
+            plt.ylim([0.75 * env_config.INITIAL_ACCOUNT_BALANCE, 1.25 * env_config.INITIAL_ACCOUNT_BALANCE])
+        elif self.env_info['split'] == "test":
+            color = colors[2]
+            plt.ylim([0.5 * env_config.INITIAL_ACCOUNT_BALANCE, 2 * env_config.INITIAL_ACCOUNT_BALANCE])
+
+        plt.plot(self.memory_buffer["total_asset_value_memory"], 'o-', color=color, linewidth=2)
+
+        # Add a description to plot
+        description = f"Trajectory Description"
+        description += f"\n\nPortfolio Value: ${total_assets:,.0f}"
+        description += f"\nCash-on-hand: ${account_balance:,.0f}"
+        # Turbulence
+        description += f"\n\nTurbulence: {self.env_info['turbulence']:,.0f}"
+        description += f"\nThreshold: {self.env_info['turbulence_threshold']:,.0f}"
+        # How much have we traded
+        description += f"\n\nShares Owned: {np.sum(self.observation['shares_owned_fractional']):,.1f}"
+        description += f"\nTrades: {self.env_info['trades']:,.0f}"
+        description += f"\nCosts: ${self.env_info['costs']:,.2f}"
+        # Add sharpe ratio
+        description += f"\n\nSharpe Ratio: {sharpe_ratio:.2f}"
+        # Add rewards
+        data1 = [i for i in describe_df_rewards.index]
+        data2 = [i for i in describe_df_rewards.values]
+        description += f"\n\nRewards:"
+        for a, b in zip(data1, data2):
+            description += f"\n{a}: {b[0]:<10.2f}"
+        ax.text(x=0.075, y=0.635, s=description, bbox=dict(facecolor=colors[-1], alpha=0.5), transform=ax.transAxes)
+
+        # plt.xticks([2009, 2017, 2018, 2019, 2020, 2021])
+        plt.legend(title='Env', title_fontsize=13, labels=[self.env_info["split"]], loc='upper left')
         # save figure
         plt.savefig(f'{total_asset_value_memory_plot_filename}')
 
-        # print outputs to user if we are not training
-        if self.env_info["split"] == "val" or self.env_info["split"] == "test":
-            # TODO: print self.env_info
-            print(f"account_balance: ${account_balance:.2f}")
-            print(f"total_assets: ${total_assets:.2f}")
-            # print(f"rewards [change in total asset value]: average: ${float(df_rewards.avg()):.2f}")
-            print(
-                f"rewards [change in total asset value]: min: ${float(df_rewards.min()):.2f}, max: ${float(df_rewards.max()):.2f}, std: ${float(df_rewards.std()):.2f}"
-            )
-            # # show P&L
-            # plt.draw()
-            # plt.pause(_DELAY)
-            # time.sleep(_DELAY)
+        # # print outputs to user if we are not training
+        # if self.env_info["split"] == "val" or self.env_info["split"] == "test":
+        #     # Print self.env_info
+        #     # env_info = self.env_info
+        #     # env_info = env_info.pop("previous_observation", None)
+        #     # pprint.pprint(self.env_info)
+
+        #     print(f"Portfolio Value: ${total_assets:.2f}")
+        #     print(f"Cash-on-hand: ${account_balance:.2f}")
+        #     print(f"Trades: ${self.env_info['trades']:.2f}")
+        #     print(f"Costs: ${self.env_info['costs']:.2f}")
+
+        #     print(f"Rewards:\n{df_rewards.describe()}")
+        #     # print(f"Portfolio Value:\n{df_total_value.describe()}")
+
         plt.close()
