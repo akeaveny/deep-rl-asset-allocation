@@ -79,12 +79,12 @@ class MultiStockEnv(gym.Env):
 
         self.observation = {
             "account_balance": [env_config.INITIAL_ACCOUNT_BALANCE],
-            "adjusted_close_price": self.current_df.adjcp.values.tolist(),
+            "adjusted_close_price": self.current_df["Adj Close"].values.tolist(),
             "shares_owned_fractional": [0] * data_config.STOCK_DIM,
-            "moving_average_convergence_divergence": self.current_df.macd.values.tolist(),
-            "relative_strength_index ": self.current_df.rsi.values.tolist(),
-            "commodity_channel_index": self.current_df.cci.values.tolist(),
-            "average_directional_index": self.current_df.adx.values.tolist()
+            "moving_average_convergence_divergence": self.current_df["MACD"].values.tolist(),
+            "relative_strength_index ": self.current_df["RSI"].values.tolist(),
+            "commodity_channel_index": self.current_df["CCI"].values.tolist(),
+            "average_directional_index": self.current_df["ADX"].values.tolist()
         }
 
         self.seed()
@@ -106,12 +106,12 @@ class MultiStockEnv(gym.Env):
             # init default state
             self.observation = {
                 "account_balance": [env_config.INITIAL_ACCOUNT_BALANCE],
-                "adjusted_close_price": self.current_df.adjcp.values.tolist(),
+                "adjusted_close_price": self.current_df["Adj Close"].values.tolist(),
                 "shares_owned_fractional": [0] * data_config.STOCK_DIM,
-                "moving_average_convergence_divergence": self.current_df.macd.values.tolist(),
-                "relative_strength_index ": self.current_df.rsi.values.tolist(),
-                "commodity_channel_index": self.current_df.cci.values.tolist(),
-                "average_directional_index": self.current_df.adx.values.tolist()
+                "moving_average_convergence_divergence": self.current_df["MACD"].values.tolist(),
+                "relative_strength_index ": self.current_df["RSI"].values.tolist(),
+                "commodity_channel_index": self.current_df["CCI"].values.tolist(),
+                "average_directional_index": self.current_df["ADX"].values.tolist()
             }
             total_asset_value = env_config.INITIAL_ACCOUNT_BALANCE
 
@@ -159,14 +159,14 @@ class MultiStockEnv(gym.Env):
         # increase count for day
         self.env_info["day"] += 1
         self.current_df = self.df.loc[self.env_info["day"], :]
-        self.env_info["turbulence"] = self.current_df['turbulence'].values[0]
+        self.env_info["turbulence"] = self.current_df['Turbulence'].values[0]
 
         # update state based on new date
-        self.observation["adjusted_close_price"] = self.current_df.adjcp.values.tolist()
-        self.observation["moving_average_convergence_divergence"] = self.current_df.macd.values.tolist()
-        self.observation["relative_strength_index"] = self.current_df.rsi.values.tolist()
-        self.observation["commodity_channel_index"] = self.current_df.cci.values.tolist()
-        self.observation["average_directional_index"] = self.current_df.adx.values.tolist()
+        self.observation["adjusted_close_price"] = self.current_df["Adj Close"].values.tolist()
+        self.observation["moving_average_convergence_divergence"] = self.current_df["MACD"].values.tolist()
+        self.observation["relative_strength_index"] = self.current_df["RSI"].values.tolist()
+        self.observation["commodity_channel_index"] = self.current_df["CCI"].values.tolist()
+        self.observation["average_directional_index"] = self.current_df["ADX"].values.tolist()
 
         # calculate total assets at timestep t
         total_assets_t1 = self._get_total_assets()
@@ -282,7 +282,7 @@ class MultiStockEnv(gym.Env):
             plt.ylim([0 * env_config.INITIAL_ACCOUNT_BALANCE, 7.5 * env_config.INITIAL_ACCOUNT_BALANCE])
         elif self.env_info['split'] == "val":
             color = colors[1]
-            plt.ylim([0.75 * env_config.INITIAL_ACCOUNT_BALANCE, 1.25 * env_config.INITIAL_ACCOUNT_BALANCE])
+            plt.ylim([0.75 * env_config.INITIAL_ACCOUNT_BALANCE, 5 * env_config.INITIAL_ACCOUNT_BALANCE])
         elif self.env_info['split'] == "test":
             color = colors[2]
             plt.ylim([0.5 * env_config.INITIAL_ACCOUNT_BALANCE, 2 * env_config.INITIAL_ACCOUNT_BALANCE])
@@ -297,9 +297,9 @@ class MultiStockEnv(gym.Env):
         description += f"\n\nTurbulence: {self.env_info['turbulence']:,.0f}"
         description += f"\nThreshold: {self.env_info['turbulence_threshold']:,.0f}"
         # How much have we traded
-        description += f"\n\nShares Owned: {np.sum(self.observation['shares_owned_fractional']):,.1f}"
+        description += f"\n\nShares Owned: {np.sum(self.observation['shares_owned_fractional']):,.0f}"
         description += f"\nTrades: {self.env_info['trades']:,.0f}"
-        description += f"\nCosts: ${self.env_info['costs']:,.2f}"
+        description += f"\nCosts: ${self.env_info['costs']:,.0f}"
         # Add sharpe ratio
         description += f"\n\nSharpe Ratio: {sharpe_ratio:.2f}"
         # Add rewards
@@ -307,7 +307,7 @@ class MultiStockEnv(gym.Env):
         data2 = [i for i in describe_df_rewards.values]
         description += f"\n\nRewards:"
         for a, b in zip(data1, data2):
-            description += f"\n{a}: {b[0]:<10.2f}"
+            description += f"\n{a}: {b[0]:<10.0f}"
         ax.text(x=0.075, y=0.635, s=description, bbox=dict(facecolor=colors[-1], alpha=0.5), transform=ax.transAxes)
 
         # plt.xticks([2009, 2017, 2018, 2019, 2020, 2021])

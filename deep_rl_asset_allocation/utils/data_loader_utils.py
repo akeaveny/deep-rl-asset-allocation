@@ -14,7 +14,9 @@ def load_preprocessed_djia_data(training_data_file: str = paths_config.TRAINING_
     # read and preprocess training data
     if os.path.exists(preprocessed_data_file):
         print(f'Found prevouisly saved pre-processed data: {preprocessed_data_file}')
-        df = pd.read_csv(preprocessed_data_file, index_col=0)
+        df = pd.read_csv(preprocessed_data_file)
+        # Format date column
+        df["Date"] = df.apply(data_preprocessing.convert_datadate_to_datetime, axis=1)
     else:
         print(f'Starting pre-processing pipeline ..')
         df = data_preprocessing.preprocess_djia_data(training_data_file)
@@ -24,7 +26,17 @@ def load_preprocessed_djia_data(training_data_file: str = paths_config.TRAINING_
 
 
 def _save_preprocessed_dataset(preprocessed_data: pd.DataFrame, filename: str):
-    preprocessed_data.to_csv(filename)
+    preprocessed_data.to_csv(filename, index=False)
+
+
+def get_data_between_dates(df, start, end):
+    """split the dataset into training or testing using date"""
+    type(df.Date[0])
+    data = df[(df.Date >= start) & (df.Date < end)]
+    data = data.sort_values(['Date', 'Ticker'], ignore_index=True)
+    # reset index based on date
+    data.index = data.Date.factorize()[0]
+    return data
 
 
 def get_train_val_test_djia_data(
@@ -54,12 +66,3 @@ def get_train_val_test_djia_data(
     }
 
     return djia_data
-
-
-def get_data_between_dates(df, start, end):
-    """split the dataset into training or testing using date"""
-    data = df[(df.date >= str(start)) & (df.date < str(end))]
-    data = data.sort_values(['date', 'tic'], ignore_index=True)
-    # reset index based on date
-    data.index = data.date.factorize()[0]
-    return data

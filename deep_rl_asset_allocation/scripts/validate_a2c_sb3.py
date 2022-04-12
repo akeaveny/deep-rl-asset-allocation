@@ -8,17 +8,19 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from deep_rl_asset_allocation.configs import (data_config, env_config,
-                                              paths_config)
+import torch
+from deep_rl_asset_allocation.configs import (data_config, env_config, paths_config)
 from deep_rl_asset_allocation.envs.multi_stock_env import MultiStockEnv
-from deep_rl_asset_allocation.utils import data_loader_utils
+from deep_rl_asset_allocation.utils import data_loader_utils, experiment_utils
 from gym.wrappers import FlattenObservation
-from stable_baselines3 import A2C
+from stable_baselines3 import A2C, DDPG, PPO
 from stable_baselines3.a2c import MlpPolicy
-from stable_baselines3.common.callbacks import (BaseCallback, CallbackList,
-                                                CheckpointCallback)
+from stable_baselines3.common.callbacks import (BaseCallback, CallbackList, CheckpointCallback)
 from stable_baselines3.common.monitor import Monitor, load_results
 from stable_baselines3.common.vec_env import DummyVecEnv
+
+# Setting random seed for reproducibility
+experiment_utils.set_random_seed(seed=env_config.SEED)
 
 
 def load_A2C(env_train, model_name):
@@ -26,7 +28,8 @@ def load_A2C(env_train, model_name):
     a2c_saved_model_filename = os.path.join(paths_config.results_trained_models_dir, f'{model_name}')
 
     start = time.time()
-    model = A2C(MlpPolicy, env_train, seed=data_config.SEED)
+    model = A2C(MlpPolicy, env_train, seed=env_config.SEED)
+    # model = PPO(MlpPolicy, env_train, seed=env_config.SEED)
     model.load(a2c_saved_model_filename)
     print(f'Loaded A2C Model: {a2c_saved_model_filename}')
 
@@ -57,7 +60,7 @@ def test_model(model, df_test, env_test, training_iteration):
     commodity_channel_index = last_obs["commodity_channel_index"]
     average_directional_index = last_obs["average_directional_index"]
     total_assets_value = np.array(account_balance) + np.sum(np.array(adjusted_close_price) * np.array(shares_owned_fractional))
-    print(f"Final Observation: \tAccount Balance: ${account_balance:.0f} \tTotal Asset Value: ${total_assets_value:.0f}")
+    print(f"Final Observation: \tPortfolio Value: ${total_assets_value:.0f} \tCash-on-Hand Balance: ${account_balance:.0f}")
 
     df_last_state = pd.DataFrame({
         'account_balance': int(account_balance),
@@ -83,12 +86,12 @@ def main():
     df_train, df_val, df_test = djia_data_dict["df_train"], djia_data_dict["df_val"], djia_data_dict["df_test"]
 
     # get unique trade dates
-    unique_trade_dates = df_djia[(df_djia.date > str(data_config.VALIDATION_START)) & (df_djia.date <= str(data_config.TESTING_END))].date.unique()
+    unique_trade_dates = df_djia[(df_djia.Date > data_config.VALIDATION_START) & (df_djia.Date <= data_config.TESTING_END)].Date.unique()
 
     # get turbulence threshold
     insample_turbulence = df_train
-    insample_turbulence = insample_turbulence.drop_duplicates(subset=['date'])
-    insample_turbulence_threshold = np.quantile(insample_turbulence.turbulence.values, .90)
+    insample_turbulence = insample_turbulence.drop_duplicates(subset=['Date'])
+    insample_turbulence_threshold = np.quantile(insample_turbulence.Turbulence.values, .90)
 
     # rebalance_window is the number of months to retrain the model
     rebalance_window = data_config.REBALANCE_WINDOW
@@ -109,7 +112,7 @@ def main():
         idx1 = idx - rebalance_window - validation_window
         idx2 = idx - rebalance_window
         idx3 = idx
-        print(f'val-start: {idx1}, val-end: {idx2} and test-end: {idx3} -> total: {len(unique_trade_dates)} months')
+        print(f'Total Months: {len(unique_trade_dates)}, val-start: {idx1}, val-end: {idx2}, test-end: {idx3}')
 
         val_start_date = unique_trade_dates[idx1]
         val_end_date = unique_trade_dates[idx2]
@@ -123,11 +126,11 @@ def main():
         _df_test = data_loader_utils.get_data_between_dates(df_djia, start=val_end_date, end=test_end_date)
 
         # get mean of historical turbulence
-        end_index = df_djia.index[df_djia["date"] == val_start_date].to_list()[-1]
+        end_index = df_djia.index[df_djia["Date"] == val_start_date].to_list()[-1]
         start_index = end_index - (validation_window * 30 + 1)  # 30 days per month
         historical_turbulence = df_djia.iloc[start_index:(end_index + 1), :]
-        historical_turbulence = historical_turbulence.drop_duplicates(subset=['date'])
-        historical_turbulence_mean = np.mean(historical_turbulence.turbulence.values)
+        historical_turbulence = historical_turbulence.drop_duplicates(subset=['Date'])
+        historical_turbulence_mean = np.mean(historical_turbulence.Turbulence.values)
         if historical_turbulence_mean > insample_turbulence_threshold:
             # if the mean of the historical data is greater than the 90% quantile of insample turbulence data
             # then we assume that the current market is volatile,
@@ -137,7 +140,8 @@ def main():
         else:
             # if the mean of the historical data is less than the 90% quantile of insample turbulence data
             # then we tune up the turbulence_threshold, meaning we lower the risk
-            turbulence_threshold = np.quantile(insample_turbulence.turbulence.values, 1)
+            turbulence_threshold = np.quantile(insample_turbulence.Turbulence.values, 1)
+        turbulence_threshold = 1000
         print(f"Turbulence Threshold: {turbulence_threshold:.2f}")
 
         # TODO: init envs with DummyVecEnv([lambda: ])
@@ -161,7 +165,7 @@ def main():
                 turbulence_threshold=turbulence_threshold,
             ))
 
-        model_a2c = load_A2C(env_train, model_name=f"sb3_a2c_training_iteration_{training_iteration+1}")
+        model_a2c = load_A2C(env_train, model_name=f"sb3_a2c_training_iteration_{training_iteration}")
         print(f"Validating A2C ...")
         validate_model(model=model_a2c, df_val=_df_val, env_val=env_val)
         print(f"Testing A2C ...")
